@@ -42,6 +42,18 @@ async def root():
     return {"status": "healthy"}
 
 
+@app.get("/debug")
+async def debug():
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "")
+    api_key = os.environ.get("CLOUDINARY_API_KEY", "")
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET", "")
+    return {
+        "CLOUDINARY_CLOUD_NAME": cloud_name if cloud_name else "NOT SET",
+        "CLOUDINARY_API_KEY": api_key[:6] + "..." if api_key else "NOT SET",
+        "CLOUDINARY_API_SECRET": "SET" if api_secret else "NOT SET",
+    }
+
+
 @app.post("/receive")
 async def receive_audio(file: UploadFile = File(...)):
     content_type = file.content_type or ""
@@ -51,24 +63,29 @@ async def receive_audio(file: UploadFile = File(...)):
             detail="Unsupported audio format."
         )
 
-    contents = await file.read()
-    ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "mp3"
+    try:
+        contents = await file.read()
+        ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "mp3"
 
-    # Upload to Cloudinary (overwrite same slot every time → latest file wins)
-    result = cloudinary.uploader.upload(
-        contents,
-        public_id=FIXED_PUBLIC_ID,
-        resource_type="video",
-        overwrite=True,
-        format=ext,
-    )
+        result = cloudinary.uploader.upload(
+            contents,
+            public_id=FIXED_PUBLIC_ID,
+            resource_type="video",
+            overwrite=True,
+            format=ext,
+        )
 
-    return {
-        "status": "success",
-        "message": f"File '{file.filename}' uploaded successfully.",
-        "filename": file.filename,
-        "url": result["secure_url"]
-    }
+        return {
+            "status": "success",
+            "message": f"File '{file.filename}' uploaded successfully.",
+            "filename": file.filename,
+            "url": result["secure_url"]
+        }
+
+    except cloudinary.api.Error as e:
+        raise HTTPException(status_code=502, detail=f"Cloudinary error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.get("/send")
@@ -96,9 +113,11 @@ async def send_audio():
             }
         )
 
-    except cloudinary.exceptions.NotFound:
+    except cloudinary.api.NotFound:
         raise HTTPException(status_code=404, detail="No audio files have been uploaded yet.")
     except HTTPException:
         raise
+    except cloudinary.api.Error as e:
+        raise HTTPException(status_code=502, detail=f"Cloudinary error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Storage error: {str(e)}")
