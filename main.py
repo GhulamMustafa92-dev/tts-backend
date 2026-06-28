@@ -42,6 +42,17 @@ async def root():
     return {"status": "healthy"}
 
 
+@app.get("/test-cloudinary")
+async def test_cloudinary():
+    try:
+        result = cloudinary.api.ping()
+        return {"cloudinary": "connected", "response": result}
+    except cloudinary.api.Error as e:
+        return {"cloudinary": "auth_failed", "error": str(e)}
+    except Exception as e:
+        return {"cloudinary": "error", "error": str(e)}
+
+
 @app.get("/debug")
 async def debug():
     cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "")
