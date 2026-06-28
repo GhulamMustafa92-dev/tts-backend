@@ -30,11 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALLOWED_TYPES = {
-    "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
-    "audio/ogg", "audio/flac", "audio/aac", "audio/m4a",
-    "audio/x-m4a", "application/octet-stream"
-}
+ALLOWED_EXTENSIONS = {"mp3", "wav", "ogg", "flac", "aac", "m4a", "mpeg"}
 
 
 @app.get("/")
@@ -67,36 +63,34 @@ async def debug():
 
 @app.post("/receive")
 async def receive_audio(file: UploadFile = File(...)):
-    content_type = file.content_type or ""
-    if content_type not in ALLOWED_TYPES:
+    filename = file.filename or "audio.mp3"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "mp3"
+
+    if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=415,
-            detail="Unsupported audio format."
+            detail=f"Unsupported file extension: .{ext}"
         )
 
     try:
         contents = await file.read()
-        ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "mp3"
 
         result = cloudinary.uploader.upload(
             contents,
             public_id=FIXED_PUBLIC_ID,
             resource_type="video",
             overwrite=True,
-            format=ext,
         )
 
         return {
             "status": "success",
-            "message": f"File '{file.filename}' uploaded successfully.",
-            "filename": file.filename,
+            "message": f"File '{filename}' uploaded successfully.",
+            "filename": filename,
             "url": result["secure_url"]
         }
 
-    except cloudinary.api.Error as e:
-        raise HTTPException(status_code=502, detail=f"Cloudinary error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {type(e).__name__}: {str(e)}")
 
 
 @app.get("/send")
@@ -128,7 +122,5 @@ async def send_audio():
         raise HTTPException(status_code=404, detail="No audio files have been uploaded yet.")
     except HTTPException:
         raise
-    except cloudinary.api.Error as e:
-        raise HTTPException(status_code=502, detail=f"Cloudinary error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Storage error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Storage error: {type(e).__name__}: {str(e)}")
